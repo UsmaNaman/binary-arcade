@@ -1,0 +1,986 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Binary Arcade</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&family=Pixelify+Sans:wght@500;700&display=swap">
+<style>
+/* Layout: arcade cabinet header, two big mode tabs (Pixels / Sound), each game = play area + key-words card */
+:root{
+  --bg:#eceff6; --surface:#ffffff; --ink:#151a2d; --muted:#565d78; --line:#d2d7e4;
+  --accent:#2c49d8; --accent-soft:#dfe5fb; --on-accent:#ffffff; --wave:#c2410c;
+  --good:#146c36; --good-bg:#dcf3e4; --bad:#b42323; --bad-bg:#fbe3e3; --px-line:#b7bdd0;
+  --f-display:"Pixelify Sans", ui-monospace, Menlo, monospace;
+  --f-body:"Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --cell:clamp(28px, 8vw, 40px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1220; --surface:#181c2d; --ink:#e7e9f3; --muted:#9ca3bf; --line:#2d3349;
+    --accent:#8299ff; --accent-soft:#252d52; --on-accent:#0c0f1c; --wave:#fb923c;
+    --good:#5ee08f; --good-bg:#13301f; --bad:#ff8080; --bad-bg:#3b1818; --px-line:#3a4160;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1220; --surface:#181c2d; --ink:#e7e9f3; --muted:#9ca3bf; --line:#2d3349;
+  --accent:#8299ff; --accent-soft:#252d52; --on-accent:#0c0f1c; --wave:#fb923c;
+  --good:#5ee08f; --good-bg:#13301f; --bad:#ff8080; --bad-bg:#3b1818; --px-line:#3a4160;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg); color:var(--ink); font-family:var(--f-body); font-size:16px; line-height:1.5}
+.wrap{max-width:1120px; margin:0 auto; padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px))}
+h1,h2,h3{font-family:var(--f-display); font-weight:700; text-wrap:balance; margin:0; line-height:1.1}
+p{margin:0}
+button{font:inherit; color:inherit}
+:focus-visible{outline:3px solid var(--accent); outline-offset:2px}
+
+/* header */
+.top{padding-block:28px 20px}
+.top .wrap{display:flex; align-items:center; gap:20px; flex-wrap:wrap}
+.sprite{display:grid; grid-template-columns:repeat(8, 7px); grid-auto-rows:7px; gap:1px; flex:none}
+.sprite i{background:transparent; display:block}
+.sprite i.on{background:var(--accent)}
+.brand{flex:1 1 260px; min-width:0}
+.brand h1{font-size:clamp(34px, 7vw, 54px); letter-spacing:.01em}
+.brand p{color:var(--muted); margin-top:6px; max-width:60ch}
+.brand code{font-family:var(--f-mono); font-size:.88em; color:var(--ink)}
+.score{display:flex; gap:10px; font-family:var(--f-display)}
+.score div{background:var(--surface); border:1.5px solid var(--line); border-radius:8px; padding:6px 14px; text-align:center; min-width:84px}
+.score b{display:block; font-size:26px; line-height:1.1; font-variant-numeric:tabular-nums}
+.score span{font-family:var(--f-body); font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted)}
+
+/* tabs */
+.modes{display:flex; gap:10px; border-bottom:2px solid var(--line); margin-bottom:18px}
+.mode{background:none; border:0; border-bottom:4px solid transparent; margin-bottom:-2px; padding:10px 6px 10px; font-family:var(--f-display); font-size:24px; color:var(--muted); cursor:pointer; display:flex; align-items:center; gap:8px}
+.mode[aria-selected="true"]{color:var(--ink); border-bottom-color:var(--accent)}
+.mode small{font-family:var(--f-mono); font-size:12px; color:var(--muted)}
+.games{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px}
+.chip{border:1.5px solid var(--line); background:var(--surface); border-radius:999px; padding:7px 14px; cursor:pointer; font-weight:700; font-size:15px}
+.chip[aria-pressed="true"]{background:var(--ink); color:var(--bg); border-color:var(--ink)}
+
+/* game layout */
+.game{display:grid; grid-template-columns:minmax(0,1fr) 290px; gap:20px; align-items:start; margin-bottom:40px}
+@media (max-width:860px){ .game{grid-template-columns:minmax(0,1fr)} }
+.panel{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:20px; min-width:0; display:flex; flex-direction:column; gap:16px}
+.panel h2{font-size:28px}
+.lede{color:var(--muted); max-width:62ch}
+.row{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
+.keys{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:18px; display:flex; flex-direction:column; gap:12px}
+.keys h3{font-size:18px}
+.keys dl{margin:0; display:flex; flex-direction:column; gap:10px}
+.keys dt{font-weight:700}
+.keys dd{margin:0; color:var(--muted); font-size:15px}
+.formula{font-family:var(--f-mono); font-size:13.5px; background:var(--accent-soft); border-radius:8px; padding:10px 12px; color:var(--ink)}
+.eyebrow{font-size:12px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); font-weight:700}
+
+/* buttons */
+.btn{border:2px solid var(--ink); background:var(--surface); border-radius:6px; padding:8px 16px; font-weight:700; cursor:pointer; box-shadow:0 3px 0 var(--ink); transition:transform .06s, box-shadow .06s}
+.btn:active{transform:translateY(2px); box-shadow:0 1px 0 var(--ink)}
+.btn.primary{background:var(--accent); color:var(--on-accent); border-color:var(--ink)}
+.btn.ghost{box-shadow:none; border-color:var(--line)}
+.btn.ghost:active{transform:none}
+.seg{display:inline-flex; border:1.5px solid var(--line); border-radius:8px; overflow:hidden}
+.seg button{border:0; background:var(--surface); padding:7px 12px; cursor:pointer; font-weight:700; font-size:14px}
+.seg button + button{border-left:1.5px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent); color:var(--on-accent)}
+
+/* feedback */
+.fb{border-radius:8px; padding:10px 14px; font-weight:700; min-height:1.5em}
+.fb:empty{display:none}
+.fb.ok{background:var(--good-bg); color:var(--good)}
+.fb.bad{background:var(--bad-bg); color:var(--bad)}
+.fb.info{background:var(--accent-soft); color:var(--ink)}
+.fb .work{display:block; font-family:var(--f-mono); font-weight:400; font-size:14px; margin-top:4px; color:var(--ink)}
+
+/* pixel boards */
+.board{display:flex; gap:12px; align-items:flex-start; max-width:100%; overflow-x:auto; padding-bottom:4px}
+.grid{display:grid; grid-template-columns:repeat(var(--cols), var(--cell)); grid-auto-rows:var(--cell); gap:2px; padding:2px; background:var(--px-line); border-radius:4px; touch-action:none; user-select:none; -webkit-user-select:none; flex:none}
+.px{border:0; padding:0; margin:0; border-radius:1px; cursor:crosshair; position:relative}
+.grid.static .px{cursor:default}
+.px:focus-visible{outline:3px solid var(--accent); outline-offset:-3px}
+.px.wrong{box-shadow:inset 0 0 0 3px var(--bad)}
+.codes{display:grid; grid-auto-rows:var(--cell); gap:2px; padding-block:2px; font-family:var(--f-mono); font-size:clamp(12px, 3.3vw, 15px); align-items:center; white-space:nowrap; flex:none}
+.codes .code{display:flex; align-items:center; height:100%}
+.codes input{font-family:var(--f-mono); font-size:16px; width:8.6ch; height:calc(var(--cell) - 2px); padding:0 6px; border:1.5px solid var(--line); border-radius:5px; background:var(--surface); color:var(--ink); letter-spacing:.06em}
+.codes input.ok{border-color:var(--good); background:var(--good-bg)}
+.codes input.bad{border-color:var(--bad); background:var(--bad-bg)}
+.palette{display:flex; flex-wrap:wrap; gap:8px}
+.sw{display:flex; align-items:center; gap:8px; border:1.5px solid var(--line); background:var(--surface); border-radius:8px; padding:5px 10px 5px 5px; font-size:14px; cursor:pointer}
+.sw.static{cursor:default}
+.sw i{width:24px; height:24px; border-radius:4px; border:1px solid var(--px-line); display:block}
+.sw code{font-family:var(--f-mono); font-weight:600}
+.sw[aria-pressed="true"]{border-color:var(--accent); box-shadow:0 0 0 2px var(--accent)}
+.out{font-family:var(--f-mono); font-size:14px; background:var(--bg); border-radius:8px; padding:12px; overflow-x:auto; white-space:pre; line-height:1.6}
+.stats{display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:10px}
+.stat{border:1px solid var(--line); border-radius:8px; padding:10px 12px}
+.stat b{display:block; font-family:var(--f-display); font-size:22px; font-variant-numeric:tabular-nums}
+.stat span{font-size:13px; color:var(--muted)}
+
+/* quiz */
+.q{font-size:19px; max-width:58ch}
+.answer{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+.answer input{font:inherit; font-size:18px; padding:8px 12px; width:12ch; border:2px solid var(--line); border-radius:6px; background:var(--surface); color:var(--ink); font-variant-numeric:tabular-nums}
+.answer label{font-weight:700}
+
+/* beeps */
+.bits{display:flex; flex-direction:column; gap:10px; max-width:560px}
+.brow{display:grid; grid-template-columns:44px repeat(var(--n), minmax(0,1fr)) 26px; gap:6px; align-items:center}
+.brow.head{font-family:var(--f-mono); font-size:12px; color:var(--muted); text-align:center}
+.brow .tag{font-family:var(--f-mono); font-size:12px; color:var(--muted)}
+.bit{height:58px; border:1.5px solid var(--line); background:var(--surface); border-radius:6px; padding:6px 0 4px; display:flex; flex-direction:column; align-items:center; justify-content:space-between; cursor:pointer; font-family:var(--f-mono); font-size:20px; font-weight:600; min-width:0}
+.bit .bar{width:55%; height:4px; border-radius:2px; background:var(--line)}
+.bit .bar.heard{background:var(--muted)}
+.bit .bar.hi{height:18px; background:var(--wave)}
+.bit .bar.lo{height:5px; background:var(--wave)}
+.bit.now{border-color:var(--wave); box-shadow:0 0 0 3px color-mix(in srgb, var(--wave) 35%, transparent)}
+.playrow{width:44px; height:44px; border-radius:50%; border:2px solid var(--ink); background:var(--surface); cursor:pointer; display:grid; place-items:center; padding:0}
+.playrow svg{width:16px; height:16px; fill:var(--ink)}
+.mark{font-weight:700; font-size:20px; text-align:center}
+.mark.ok{color:var(--good)} .mark.bad{color:var(--bad)}
+.toggle{display:flex; align-items:center; gap:8px; font-size:15px; cursor:pointer}
+.toggle input{width:18px; height:18px; accent-color:var(--accent)}
+details.ascii summary{cursor:pointer; font-weight:700}
+.asciigrid{display:grid; grid-template-columns:repeat(auto-fill, minmax(62px,1fr)); gap:4px; margin-top:10px; font-family:var(--f-mono); font-size:13px}
+.asciigrid span{background:var(--bg); border-radius:4px; padding:3px 6px; text-align:center}
+.maker{display:flex; flex-direction:column; gap:6px; font-family:var(--f-mono); font-size:15px; overflow-x:auto}
+.mrow{display:grid; grid-template-columns:3ch auto 4ch; gap:14px; align-items:center; padding:4px 8px; border-radius:6px; width:max-content}
+.mrow .ch{font-weight:600; font-size:18px}
+.mrow .dn{color:var(--muted); text-align:right}
+.mrow .b{display:inline-block; width:1.15ch; text-align:center; border-radius:3px}
+.mrow .b.now{background:var(--wave); color:var(--on-accent)}
+.mrow.now{background:var(--accent-soft)}
+.textin{font:inherit; font-family:var(--f-mono); font-size:20px; padding:8px 12px; border:2px solid var(--line); border-radius:6px; background:var(--surface); color:var(--ink); width:min(100%, 16ch); text-transform:uppercase}
+
+/* sampling */
+.scope{width:100%; height:240px; display:block; background:var(--bg); border-radius:8px}
+.sliders{display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:16px}
+.sliders label{display:flex; flex-direction:column; gap:4px; font-weight:700}
+.sliders output{font-family:var(--f-mono); font-weight:400; color:var(--muted); font-size:14px}
+.sliders input[type=range]{width:100%; accent-color:var(--accent)}
+.legend{display:flex; gap:16px; flex-wrap:wrap; font-size:14px; color:var(--muted)}
+.legend i{display:inline-block; width:18px; height:4px; border-radius:2px; vertical-align:middle; margin-right:6px}
+
+.foot{color:var(--muted); font-size:14px; padding-block:0 32px}
+@media (prefers-reduced-motion: reduce){ .btn{transition:none} }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="sprite" id="sprite" aria-hidden="true"></div>
+    <div class="brand">
+      <h1>Binary Arcade</h1>
+      <p>Games for KS3 Computing. Turn 1s and 0s into pictures and sounds, then turn them back again. <code>01000010 = B</code></p>
+    </div>
+    <div class="score" aria-live="polite">
+      <div><b id="score">0</b><span>Score</span></div>
+      <div><b id="streak">0</b><span>Streak</span></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="modes" role="tablist">
+    <button class="mode" role="tab" id="tab-pixels" data-mode="pixels" aria-selected="true">Pixels <small>bitmaps</small></button>
+    <button class="mode" role="tab" id="tab-sound" data-mode="sound" aria-selected="false">Sound <small>beeps &amp; samples</small></button>
+  </div>
+
+  <div class="games" id="games-pixels">
+    <button class="chip" data-game="px-decode" aria-pressed="true">Pixel Decoder</button>
+    <button class="chip" data-game="px-encode" aria-pressed="false">Pixel Encoder</button>
+    <button class="chip" data-game="px-studio" aria-pressed="false">Colour Studio</button>
+    <button class="chip" data-game="px-size" aria-pressed="false">Image File Size</button>
+  </div>
+  <div class="games" id="games-sound" hidden>
+    <button class="chip" data-game="sd-decode" aria-pressed="true">Beep Decoder</button>
+    <button class="chip" data-game="sd-maker" aria-pressed="false">Beep Maker</button>
+    <button class="chip" data-game="sd-sample" aria-pressed="false">Sampling Lab</button>
+    <button class="chip" data-game="sd-size" aria-pressed="false">Sound File Size</button>
+  </div>
+
+  <!-- PIXEL DECODER -->
+  <section class="game" id="px-decode">
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <h2>Pixel Decoder</h2>
+        <div class="seg" id="dec-level">
+          <button data-l="1" aria-pressed="true">1-bit</button>
+          <button data-l="2" aria-pressed="false">2-bit colour</button>
+        </div>
+      </div>
+      <p class="lede" id="dec-lede">Each row of binary is one row of the picture. Paint the pixels to match the code, then check. Drag to paint lots at once.</p>
+      <div class="palette" id="dec-palette"></div>
+      <div class="board" id="dec-board"></div>
+      <div class="fb" id="dec-fb" aria-live="polite"></div>
+      <div class="row">
+        <button class="btn primary" id="dec-check">Check picture</button>
+        <button class="btn" id="dec-clear">Clear</button>
+        <button class="btn ghost" id="dec-next">New picture</button>
+      </div>
+    </div>
+    <aside class="keys">
+      <h3>Key words</h3>
+      <dl>
+        <dt>Pixel</dt><dd>One tiny square of colour. Short for “picture element”.</dd>
+        <dt>Bitmap</dt><dd>An image stored as a grid of pixels. Each pixel is saved as a binary code.</dd>
+        <dt>1-bit image</dt><dd>Each pixel uses 1 bit, so it can only be one of 2 colours. Here 1 = black, 0 = white.</dd>
+        <dt>Colour depth</dt><dd>The number of bits used for each pixel. 2 bits gives 4 colours: 00, 01, 10, 11.</dd>
+      </dl>
+    </aside>
+  </section>
+
+  <!-- PIXEL ENCODER -->
+  <section class="game" id="px-encode" hidden>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <h2>Pixel Encoder</h2>
+        <div class="palette">
+          <span class="sw static"><i style="background:#1b1b1f"></i><code>1</code> black</span>
+          <span class="sw static"><i style="background:#ffffff"></i><code>0</code> white</span>
+        </div>
+      </div>
+      <p class="lede">Now go the other way. Type the binary for each row of the picture. Black is 1 and white is 0. Each row needs 8 bits.</p>
+      <div class="board" id="enc-board"></div>
+      <div class="fb" id="enc-fb" aria-live="polite"></div>
+      <div class="row">
+        <button class="btn primary" id="enc-check">Check rows</button>
+        <button class="btn" id="enc-hint">Show me row 1</button>
+        <button class="btn ghost" id="enc-next">New picture</button>
+      </div>
+    </div>
+    <aside class="keys">
+      <h3>How to encode</h3>
+      <dl>
+        <dt>Work left to right</dt><dd>Read each row like a sentence. Write 1 for every black pixel and 0 for every white one.</dd>
+        <dt>Count your bits</dt><dd>The picture is 8 pixels wide, so every row has exactly 8 bits.</dd>
+        <dt>Why it matters</dt><dd>A computer can only store 1s and 0s. This is how a picture becomes data it can save and send.</dd>
+      </dl>
+    </aside>
+  </section>
+
+  <!-- COLOUR STUDIO -->
+  <section class="game" id="px-studio" hidden>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <h2>Colour Studio</h2>
+        <div class="seg" id="st-depth">
+          <button data-d="1" aria-pressed="false">1 bit</button>
+          <button data-d="2" aria-pressed="true">2 bits</button>
+          <button data-d="3" aria-pressed="false">3 bits</button>
+        </div>
+      </div>
+      <p class="lede">Draw your own 8 × 8 picture. Change the colour depth and watch how many colours you get and how big the file grows.</p>
+      <div class="palette" id="st-palette"></div>
+      <div class="board" id="st-board"></div>
+      <div>
+        <p class="eyebrow" style="margin-bottom:6px">Your picture in binary</p>
+        <div class="out" id="st-out"></div>
+      </div>
+      <div class="stats" id="st-stats"></div>
+      <div class="row"><button class="btn" id="st-clear">Clear</button></div>
+    </div>
+    <aside class="keys">
+      <h3>More bits, more colours</h3>
+      <dl>
+        <dt>1 bit</dt><dd>2 colours (0, 1)</dd>
+        <dt>2 bits</dt><dd>4 colours (00, 01, 10, 11)</dd>
+        <dt>3 bits</dt><dd>8 colours (000 to 111)</dd>
+        <dt>24 bits</dt><dd>Over 16 million colours. This is what most photos use.</dd>
+      </dl>
+      <div class="formula">colours = 2<sup>colour depth</sup></div>
+      <p class="lede" style="font-size:15px">Each extra bit doubles the colours, but it also makes every pixel bigger, so the whole file gets bigger.</p>
+    </aside>
+  </section>
+
+  <!-- IMAGE SIZE QUIZ -->
+  <section class="game" id="px-size" hidden>
+    <div class="panel" id="px-quiz">
+      <h2>Image File Size</h2>
+      <p class="lede">Work out how much storage a bitmap image needs.</p>
+    </div>
+    <aside class="keys">
+      <h3>The formula</h3>
+      <div class="formula">size in bits =<br>width × height × colour depth</div>
+      <dl>
+        <dt>Resolution</dt><dd>How many pixels the image has, written as width × height.</dd>
+        <dt>Bits to bytes</dt><dd>8 bits make 1 byte, so divide the number of bits by 8.</dd>
+        <dt>Example</dt><dd>An 8 × 8 image with a 2-bit colour depth needs 8 × 8 × 2 = 128 bits, which is 16 bytes.</dd>
+      </dl>
+    </aside>
+  </section>
+
+  <!-- BEEP DECODER -->
+  <section class="game" id="sd-decode" hidden>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <h2>Beep Decoder</h2>
+        <div class="seg" id="bd-level">
+          <button data-l="1" aria-pressed="true">Number</button>
+          <button data-l="2" aria-pressed="false">Letter</button>
+          <button data-l="3" aria-pressed="false">Secret word</button>
+        </div>
+      </div>
+      <p class="lede">A <strong>high beep is 1</strong> and a <strong>low beep is 0</strong>. Listen, tap the bits to match what you hear, then convert the binary.</p>
+      <div class="row">
+        <button class="btn primary" id="bd-play">Play beeps</button>
+        <button class="btn" id="bd-hear1">Hear a 1</button>
+        <button class="btn" id="bd-hear0">Hear a 0</button>
+        <label class="toggle"><input type="checkbox" id="bd-visual"> Show beeps as bars</label>
+      </div>
+      <div class="bits" id="bd-bits"></div>
+      <form class="answer" id="bd-form" autocomplete="off">
+        <label for="bd-answer" id="bd-qlabel">What number is it?</label>
+        <input id="bd-answer" type="text" spellcheck="false">
+        <button class="btn primary" type="submit">Check</button>
+        <button class="btn ghost" type="button" id="bd-next">New beeps</button>
+      </form>
+      <div class="fb" id="bd-fb" aria-live="polite"></div>
+      <details class="ascii" id="bd-ascii" hidden>
+        <summary>Letter codes (ASCII)</summary>
+        <div class="asciigrid" id="bd-asciigrid"></div>
+      </details>
+    </div>
+    <aside class="keys">
+      <h3>Sound as binary</h3>
+      <dl>
+        <dt>Two sounds, two digits</dt><dd>Old modems and fax machines sent data down phone lines as tones. One pitch meant 1 and another meant 0.</dd>
+        <dt>Place values</dt><dd>Add up the place values above every 1. For 1011 that is 8 + 2 + 1 = 11.</dd>
+        <dt>ASCII</dt><dd>A code that gives every character a number. Capital A is 65, which is 01000001.</dd>
+      </dl>
+    </aside>
+  </section>
+
+  <!-- BEEP MAKER -->
+  <section class="game" id="sd-maker" hidden>
+    <div class="panel">
+      <h2>Beep Maker</h2>
+      <p class="lede">Type a word and hear it as binary. Play it to a partner and see if they can decode it on paper.</p>
+      <div class="row">
+        <label for="bm-text" class="eyebrow">Your message</label>
+      </div>
+      <div class="row">
+        <input id="bm-text" class="textin" maxlength="10" value="HELLO" spellcheck="false" autocomplete="off">
+        <button class="btn primary" id="bm-play">Play message</button>
+        <button class="btn ghost" id="bm-stop">Stop</button>
+      </div>
+      <div class="maker" id="bm-rows"></div>
+    </div>
+    <aside class="keys">
+      <h3>Partner challenge</h3>
+      <dl>
+        <dt>Encoder</dt><dd>Secretly type a short word. Hide the screen and press play.</dd>
+        <dt>Decoder</dt><dd>Write down each beep as 1 or 0. Every letter is 8 beeps, with a pause between letters.</dd>
+        <dt>Check</dt><dd>Convert each byte to denary, then use the ASCII table to find each letter.</dd>
+      </dl>
+    </aside>
+  </section>
+
+  <!-- SAMPLING LAB -->
+  <section class="game" id="sd-sample" hidden>
+    <div class="panel">
+      <h2>Sampling Lab</h2>
+      <p class="lede">Real sound is a smooth wave. A computer measures it many times a second and stores each measurement as a binary number. Change the settings and listen to the difference.</p>
+      <canvas class="scope" id="sp-canvas" aria-label="Sound wave with samples"></canvas>
+      <div class="legend">
+        <span><i style="background:var(--muted)"></i>Original sound wave</span>
+        <span><i style="background:var(--wave)"></i>What the computer stores</span>
+      </div>
+      <div class="sliders">
+        <label for="sp-rate">Sample rate <output id="sp-rate-out"></output>
+          <input type="range" id="sp-rate" min="0" max="6" step="1" value="3">
+        </label>
+        <label for="sp-depth">Bit depth <output id="sp-depth-out"></output>
+          <input type="range" id="sp-depth" min="0" max="7" step="1" value="3">
+        </label>
+      </div>
+      <div class="row">
+        <button class="btn" id="sp-orig">Play original</button>
+        <button class="btn primary" id="sp-samp">Play sampled</button>
+        <span class="eyebrow" style="margin-left:6px">Try</span>
+        <button class="chip" data-preset="0,0">Robot</button>
+        <button class="chip" data-preset="3,6">Phone call</button>
+        <button class="chip" data-preset="6,7">CD</button>
+      </div>
+      <div class="stats" id="sp-stats"></div>
+    </div>
+    <aside class="keys">
+      <h3>Key words</h3>
+      <dl>
+        <dt>Sample</dt><dd>One measurement of the sound wave’s height, stored as a binary number.</dd>
+        <dt>Sample rate</dt><dd>How many samples are taken each second, measured in hertz (Hz). More samples follow the wave more closely.</dd>
+        <dt>Bit depth</dt><dd>How many bits store each sample. More bits give more levels, so each measurement is more accurate.</dd>
+      </dl>
+      <div class="formula">size in bits =<br>sample rate × bit depth × seconds</div>
+    </aside>
+  </section>
+
+  <!-- SOUND SIZE QUIZ -->
+  <section class="game" id="sd-size" hidden>
+    <div class="panel" id="sd-quiz">
+      <h2>Sound File Size</h2>
+      <p class="lede">Work out how much storage a sound recording needs.</p>
+    </div>
+    <aside class="keys">
+      <h3>The formula</h3>
+      <div class="formula">size in bits =<br>sample rate × bit depth × seconds</div>
+      <dl>
+        <dt>Example</dt><dd>10 seconds at 100 Hz with a 4-bit depth: 100 × 4 × 10 = 4,000 bits.</dd>
+        <dt>Bits to bytes</dt><dd>Divide by 8. So 4,000 bits is 500 bytes.</dd>
+        <dt>Watch out</dt><dd>Change minutes into seconds first. 1 minute = 60 seconds.</dd>
+      </dl>
+    </aside>
+  </section>
+</main>
+
+<footer class="wrap foot">
+  <p>Sound starts when you press a play button, so turn your volume up. Your score is saved in this browser only.</p>
+</footer>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+function el(tag, cls, txt){ const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
+const rand = n => Math.floor(Math.random() * n);
+const pick = a => a[rand(a.length)];
+const fmt = n => n.toLocaleString('en-GB');
+const bin = (v, w) => v.toString(2).padStart(w, '0');
+
+/* ---------- score ---------- */
+let score = 0, streak = 0;
+try { const s = JSON.parse(localStorage.getItem('binary-arcade') || '{}'); score = s.score || 0; streak = s.streak || 0; } catch (e) {}
+function showScore(){
+  $('#score').textContent = score; $('#streak').textContent = streak;
+  try { localStorage.setItem('binary-arcade', JSON.stringify({ score, streak })); } catch (e) {}
+}
+function award(ok){ if (ok){ streak++; score += 10 + Math.min(streak - 1, 5) * 2; } else streak = 0; showScore(); }
+showScore();
+function feedback(node, kind, msg, work){
+  node.className = 'fb ' + kind; node.textContent = msg;
+  if (work){ const w = el('span', 'work', work); node.append(w); }
+}
+
+/* ---------- header sprite ---------- */
+['00100100','00011000','00111100','01011010','11111111','10111101','10100101','00100100'].join('').split('').forEach(b => {
+  const i = el('i'); if (b === '1') i.className = 'on'; $('#sprite').append(i);
+});
+
+/* ---------- navigation ---------- */
+const modeGames = { pixels: 'px-decode', sound: 'sd-decode' };
+function showGame(id){
+  $$('.game').forEach(g => g.hidden = g.id !== id);
+  $$('.chip[data-game]').forEach(c => c.setAttribute('aria-pressed', c.dataset.game === id));
+  modeGames[id.startsWith('px') ? 'pixels' : 'sound'] = id;
+  stopAll();
+  if (id === 'sd-sample') drawScope();
+}
+function showMode(m){
+  $$('.mode').forEach(t => t.setAttribute('aria-selected', t.dataset.mode === m));
+  $('#games-pixels').hidden = m !== 'pixels';
+  $('#games-sound').hidden = m !== 'sound';
+  showGame(modeGames[m]);
+}
+$$('.mode').forEach(t => t.addEventListener('click', () => showMode(t.dataset.mode)));
+$$('.chip[data-game]').forEach(c => c.addEventListener('click', () => showGame(c.dataset.game)));
+
+/* ---------- pixel data ---------- */
+const PAL = {
+  1: ['#ffffff', '#1b1b1f'],
+  2: ['#ffffff', '#f5c42c', '#e2483d', '#1b1b1f'],
+  3: ['#ffffff', '#f5c42c', '#f08a24', '#e2483d', '#3aa655', '#2f6fe0', '#8a4fd8', '#1b1b1f']
+};
+const NAMES = {
+  1: ['white', 'black'],
+  2: ['white', 'yellow', 'red', 'black'],
+  3: ['white', 'yellow', 'orange', 'red', 'green', 'blue', 'purple', 'black']
+};
+const IMG1 = [
+  { name: 'heart', rows: ['01100110','11111111','11111111','11111111','01111110','00111100','00011000','00000000'] },
+  { name: 'smiley face', rows: ['00111100','01000010','10100101','10000001','10100101','10011001','01000010','00111100'] },
+  { name: 'house', rows: ['00011000','00111100','01111110','11111111','01000010','01011010','01011010','01111110'] },
+  { name: 'space invader', rows: ['00100100','00011000','00111100','01011010','11111111','10111101','10100101','00100100'] },
+  { name: 'arrow', rows: ['00011000','00111100','01111110','11011011','00011000','00011000','00011000','00011000'] },
+  { name: 'cat', rows: ['10000001','11000011','11111111','10100101','11111111','11011011','01100110','00111100'] },
+  { name: 'tree', rows: ['00011000','00111100','01111110','00111100','01111110','11111111','00011000','00011000'] },
+  { name: 'ghost', rows: ['00111100','01111110','11011011','11011011','11111111','11111111','11111111','10101010'] }
+];
+const IMG2 = [
+  { name: 'sun', rows: ['001100','011110','112211','112211','011110','001100'] },
+  { name: 'ladybird', rows: ['003300','022220','232232','222222','232232','022220'] },
+  { name: 'target', rows: ['333333','322223','321123','321123','322223','333333'] },
+  { name: 'duck', rows: ['001100','013110','011122','011100','111110','011110'] },
+  { name: 'flag', rows: ['322222','311111','322222','311111','300000','300000'] }
+];
+const toVals = rows => rows.join('').split('').map(Number);
+
+/* ---------- reusable pixel grid ---------- */
+function makeGrid(w, h, depth, { interactive = true, brush = null, onChange = null } = {}){
+  const g = el('div', 'grid' + (interactive ? '' : ' static'));
+  g.style.setProperty('--cols', w);
+  if (!interactive) g.setAttribute('aria-hidden', 'true');
+  const vals = new Array(w * h).fill(0), cells = [];
+  for (let i = 0; i < w * h; i++){
+    const c = el(interactive ? 'button' : 'span', 'px');
+    if (interactive) c.type = 'button';
+    c.dataset.i = i; cells.push(c); g.append(c);
+  }
+  function draw(i){
+    cells[i].style.background = PAL[depth][vals[i]];
+    cells[i].classList.remove('wrong');
+    if (interactive) cells[i].setAttribute('aria-label', `Row ${Math.floor(i / w) + 1}, pixel ${i % w + 1}, ${NAMES[depth][vals[i]]}`);
+  }
+  function paint(i, v){ if (vals[i] === v) return; vals[i] = v; draw(i); onChange && onChange(); }
+  cells.forEach((_, i) => draw(i));
+  if (interactive){
+    let down = false, pv = 0;
+    const nextVal = i => brush ? brush() : 1 - vals[i];
+    g.addEventListener('pointerdown', e => {
+      const c = e.target.closest('.px'); if (!c) return;
+      e.preventDefault(); down = true;
+      const i = +c.dataset.i; pv = nextVal(i); paint(i, pv);
+    });
+    g.addEventListener('pointermove', e => {
+      if (!down) return;
+      const t = document.elementFromPoint(e.clientX, e.clientY);
+      const c = t && t.closest && t.closest('.px');
+      if (c && g.contains(c)) paint(+c.dataset.i, pv);
+    });
+    window.addEventListener('pointerup', () => down = false);
+    window.addEventListener('pointercancel', () => down = false);
+    g.addEventListener('click', e => {
+      if (e.detail !== 0) return; // keyboard activation only
+      const c = e.target.closest('.px'); if (!c) return;
+      const i = +c.dataset.i; paint(i, nextVal(i));
+    });
+  }
+  return {
+    el: g, vals,
+    set(arr){ arr.forEach((v, i) => { vals[i] = v; draw(i); }); onChange && onChange(); },
+    mark(idx){ idx.forEach(i => cells[i].classList.add('wrong')); }
+  };
+}
+function palette(container, depth, { selected = null, onPick = null } = {}){
+  container.innerHTML = '';
+  PAL[depth].forEach((col, v) => {
+    const b = el(onPick ? 'button' : 'span', 'sw' + (onPick ? '' : ' static'));
+    if (onPick){ b.type = 'button'; b.setAttribute('aria-pressed', v === selected); b.addEventListener('click', () => {
+      $$('.sw', container).forEach(x => x.setAttribute('aria-pressed', 'false')); b.setAttribute('aria-pressed', 'true'); onPick(v);
+    }); }
+    const sw = el('i'); sw.style.background = col;
+    b.append(sw, el('code', null, bin(v, depth)), document.createTextNode(' ' + NAMES[depth][v]));
+    container.append(b);
+  });
+}
+
+/* ---------- Pixel Decoder ---------- */
+const dec = { level: 1, img: null, grid: null, brush: 3, solved: false, last: {} };
+function decNew(){
+  const bank = dec.level === 1 ? IMG1 : IMG2;
+  let i; do { i = rand(bank.length); } while (bank.length > 1 && i === dec.last[dec.level]);
+  dec.last[dec.level] = i; dec.img = bank[i]; dec.solved = false;
+  const depth = dec.level === 1 ? 1 : 2, w = dec.img.rows[0].length, h = dec.img.rows.length;
+  const board = $('#dec-board'); board.innerHTML = '';
+  const codes = el('div', 'codes');
+  dec.img.rows.forEach(r => codes.append(el('div', 'code', depth === 1 ? r : r.split('').map(d => bin(+d, 2)).join(' '))));
+  dec.grid = makeGrid(w, h, depth, { brush: depth === 1 ? null : () => dec.brush });
+  board.append(codes, dec.grid.el);
+  if (depth === 1){
+    palette($('#dec-palette'), 1);
+    $('#dec-lede').textContent = 'Each row of binary is one row of the picture. 1 is black and 0 is white. Tap pixels to switch them, or drag to paint lots at once.';
+  } else {
+    palette($('#dec-palette'), 2, { selected: dec.brush, onPick: v => dec.brush = v });
+    $('#dec-lede').textContent = 'Each pixel now uses 2 bits, so every pair of bits is one pixel. Pick a colour, then paint the pixels to match the code.';
+  }
+  $('#dec-fb').textContent = ''; $('#dec-fb').className = 'fb';
+}
+$('#dec-check').addEventListener('click', () => {
+  const target = toVals(dec.img.rows), wrong = [];
+  target.forEach((v, i) => { if (dec.grid.vals[i] !== v) wrong.push(i); });
+  dec.grid.mark(wrong);
+  if (!wrong.length){
+    feedback($('#dec-fb'), 'ok', `You decoded it. It’s a ${dec.img.name}!`);
+    if (!dec.solved){ dec.solved = true; award(true); }
+  } else {
+    feedback($('#dec-fb'), 'bad', `${wrong.length} pixel${wrong.length > 1 ? 's don’t' : ' doesn’t'} match yet. Look for the red outlines.`);
+    award(false);
+  }
+});
+$('#dec-clear').addEventListener('click', () => { dec.grid.set(dec.grid.vals.map(() => 0)); $('#dec-fb').className = 'fb'; $('#dec-fb').textContent = ''; });
+$('#dec-next').addEventListener('click', decNew);
+$$('#dec-level button').forEach(b => b.addEventListener('click', () => {
+  $$('#dec-level button').forEach(x => x.setAttribute('aria-pressed', x === b)); dec.level = +b.dataset.l; decNew();
+}));
+decNew();
+
+/* ---------- Pixel Encoder ---------- */
+const enc = { img: null, inputs: [], solved: false, last: -1 };
+function encNew(){
+  let i; do { i = rand(IMG1.length); } while (i === enc.last);
+  enc.last = i; enc.img = IMG1[i]; enc.solved = false;
+  const board = $('#enc-board'); board.innerHTML = '';
+  const grid = makeGrid(8, 8, 1, { interactive: false });
+  grid.set(toVals(enc.img.rows));
+  const codes = el('div', 'codes');
+  enc.inputs = enc.img.rows.map((_, r) => {
+    const inp = el('input'); inp.id = 'enc-row-' + r;
+    Object.assign(inp, { inputMode: 'numeric', maxLength: 8, autocomplete: 'off', spellcheck: false, placeholder: '········' });
+    inp.setAttribute('aria-label', `Row ${r + 1} binary`);
+    inp.addEventListener('input', () => {
+      inp.value = inp.value.replace(/[^01]/g, '').slice(0, 8); inp.className = '';
+      if (inp.value.length === 8 && enc.inputs[r + 1]) enc.inputs[r + 1].focus();
+    });
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); (enc.inputs[r + 1] || $('#enc-check')).focus(); } });
+    const wrap = el('div', 'code'); wrap.append(inp); codes.append(wrap);
+    return inp;
+  });
+  board.append(grid.el, codes);
+  $('#enc-fb').className = 'fb'; $('#enc-fb').textContent = '';
+}
+$('#enc-check').addEventListener('click', () => {
+  let right = 0;
+  enc.inputs.forEach((inp, r) => { const ok = inp.value === enc.img.rows[r]; inp.className = ok ? 'ok' : 'bad'; if (ok) right++; });
+  if (right === 8){
+    feedback($('#enc-fb'), 'ok', `All 8 rows are right. You turned a ${enc.img.name} into 64 bits.`);
+    if (!enc.solved){ enc.solved = true; award(true); }
+  } else {
+    feedback($('#enc-fb'), 'bad', `${right} of 8 rows are right. Fix the red rows. Check each one has 8 bits.`);
+    award(false);
+  }
+});
+$('#enc-hint').addEventListener('click', () => { enc.inputs[0].value = enc.img.rows[0]; enc.inputs[0].className = 'ok'; enc.inputs[1].focus(); });
+$('#enc-next').addEventListener('click', encNew);
+encNew();
+
+/* ---------- Colour Studio ---------- */
+const st = { depth: 2, brush: 3, grid: null, vals: null };
+function stBuild(){
+  const d = st.depth, max = 2 ** d - 1;
+  const old = st.vals || toVals(IMG2[1].rows.map(r => r.padStart(7, '0').padEnd(8, '0'))).concat(new Array(16).fill(0)).slice(0, 64);
+  if (st.brush > max) st.brush = max;
+  st.grid = makeGrid(8, 8, d, { brush: () => st.brush, onChange: stOut });
+  $('#st-board').innerHTML = ''; $('#st-board').append(st.grid.el);
+  palette($('#st-palette'), d, { selected: st.brush, onPick: v => st.brush = v });
+  st.grid.set(old.map(v => Math.min(v, max)));
+}
+function stOut(){
+  const d = st.depth, v = st.grid.vals; st.vals = v.slice();
+  const lines = [];
+  for (let r = 0; r < 8; r++) lines.push(v.slice(r * 8, r * 8 + 8).map(x => bin(x, d)).join(' '));
+  $('#st-out').textContent = lines.join('\n');
+  const bits = 64 * d;
+  $('#st-stats').innerHTML = '';
+  [[2 ** d, `colours (2${sup(d)})`], [d, `bit${d > 1 ? 's' : ''} per pixel`], [fmt(bits), `bits (8 × 8 × ${d})`], [fmt(bits / 8), 'bytes (bits ÷ 8)']].forEach(([b, s]) => {
+    const n = el('div', 'stat'); n.append(el('b', null, b), el('span', null, s)); $('#st-stats').append(n);
+  });
+}
+const sup = n => String(n).split('').map(c => '⁰¹²³⁴⁵⁶⁷⁸⁹'[c]).join('');
+$$('#st-depth button').forEach(b => b.addEventListener('click', () => {
+  $$('#st-depth button').forEach(x => x.setAttribute('aria-pressed', x === b)); st.depth = +b.dataset.d; stBuild();
+}));
+$('#st-clear').addEventListener('click', () => st.grid.set(new Array(64).fill(0)));
+stBuild();
+
+/* ---------- quiz component ---------- */
+function makeQuiz(root, gen, prefix){
+  const q = el('p', 'q');
+  const form = el('form', 'answer'); form.autocomplete = 'off';
+  const lab = el('label', null, 'Answer'); lab.htmlFor = prefix + '-ans';
+  const inp = el('input'); inp.id = prefix + '-ans'; inp.inputMode = 'numeric';
+  const unit = el('span');
+  const go = el('button', 'btn primary', 'Check'); go.type = 'submit';
+  form.append(lab, inp, unit, go);
+  const fb = el('div', 'fb'); fb.setAttribute('aria-live', 'polite');
+  const bar = el('div', 'row');
+  const show = el('button', 'btn', 'Show working'); show.type = 'button';
+  const next = el('button', 'btn ghost', 'Next question'); next.type = 'button';
+  bar.append(show, next);
+  root.append(q, form, fb, bar);
+  let cur, solved, tries;
+  function nq(){ cur = gen(); solved = false; tries = 0; q.innerHTML = cur.q; unit.textContent = cur.unit; inp.value = ''; fb.className = 'fb'; fb.textContent = ''; }
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const raw = inp.value.replace(/[,\s]/g, '');
+    if (!raw){ feedback(fb, 'info', 'Type a number first.'); return; }
+    if (Number(raw) === cur.answer){
+      feedback(fb, 'ok', `Correct, ${fmt(cur.answer)} ${cur.unit}.`, cur.work);
+      if (!solved){ solved = true; award(true); }
+    } else {
+      tries++;
+      feedback(fb, 'bad', tries < 2 ? 'Not quite. Check your multiplying and try again.' : 'Not quite. Here is how to work it out:', tries < 2 ? null : cur.work);
+      award(false);
+    }
+  });
+  show.addEventListener('click', () => { feedback(fb, 'info', 'Working:', cur.work); solved = true; });
+  next.addEventListener('click', () => { nq(); inp.focus(); });
+  nq();
+}
+makeQuiz($('#px-quiz'), () => {
+  const sizes = [2, 4, 5, 8, 10, 16, 20, 32, 50, 64, 100];
+  const w = pick(sizes), h = pick(sizes), d = pick([1, 1, 2, 2, 3, 4, 8, 24]);
+  const bits = w * h * d;
+  const bytes = bits % 8 === 0 && Math.random() < 0.5;
+  return {
+    q: `An image is <b>${w}</b> pixels wide and <b>${h}</b> pixels high. It has a colour depth of <b>${d} bit${d > 1 ? 's' : ''}</b>. How many <b>${bytes ? 'bytes' : 'bits'}</b> does it need?`,
+    answer: bytes ? bits / 8 : bits, unit: bytes ? 'bytes' : 'bits',
+    work: `${w} × ${h} × ${d} = ${fmt(bits)} bits` + (bytes ? `  →  ${fmt(bits)} ÷ 8 = ${fmt(bits / 8)} bytes` : '')
+  };
+}, 'pq');
+makeQuiz($('#sd-quiz'), () => {
+  const r = pick([2, 4, 5, 10, 20, 50, 100, 1000, 8000]), d = pick([1, 2, 4, 8, 16]);
+  const mins = Math.random() < 0.2;
+  const s = mins ? pick([1, 2]) : pick([1, 2, 3, 5, 10, 20]);
+  const secs = mins ? s * 60 : s;
+  const bits = r * d * secs;
+  const bytes = bits % 8 === 0 && Math.random() < 0.4;
+  return {
+    q: `A sound is recorded for <b>${s} ${mins ? 'minute' : 'second'}${s > 1 ? 's' : ''}</b> with a sample rate of <b>${fmt(r)} Hz</b> and a bit depth of <b>${d} bit${d > 1 ? 's' : ''}</b>. How many <b>${bytes ? 'bytes' : 'bits'}</b> does it need?`,
+    answer: bytes ? bits / 8 : bits, unit: bytes ? 'bytes' : 'bits',
+    work: (mins ? `${s} min = ${secs} s.  ` : '') + `${fmt(r)} × ${d} × ${secs} = ${fmt(bits)} bits` + (bytes ? `  →  ${fmt(bits)} ÷ 8 = ${fmt(bits / 8)} bytes` : '')
+  };
+}, 'sq');
+
+/* ---------- audio ---------- */
+let actx = null, nodes = [], timers = [];
+function ac(){
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+  if (actx.state === 'suspended') actx.resume();
+  return actx;
+}
+function stopAll(){
+  nodes.forEach(n => { try { n.stop(); } catch (e) {} }); nodes = [];
+  timers.forEach(clearTimeout); timers = [];
+  $$('.bit.now, .b.now, .mrow.now').forEach(b => b.classList.remove('now'));
+}
+const BEEP = { hi: 880, lo: 330, dur: 0.26, gap: 0.14, byteGap: 0.55 };
+function tone(freq, t, dur){
+  const c = ac(), o = c.createOscillator(), g = c.createGain();
+  o.type = 'square'; o.frequency.value = freq;
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.08, t + 0.015);
+  g.gain.setValueAtTime(0.08, t + dur - 0.03);
+  g.gain.linearRampToValueAtTime(0, t + dur);
+  o.connect(g).connect(c.destination); o.start(t); o.stop(t + dur + 0.02); nodes.push(o);
+}
+// rows: array of bit arrays. onStep(row, idx, bit) fires as each beep sounds; onStep(-1) when done.
+function playRows(rows, onStep = () => {}){
+  stopAll();
+  const c = ac(), t0 = c.currentTime + 0.08;
+  let t = t0;
+  rows.forEach((bits, r) => {
+    bits.forEach((b, i) => {
+      tone(b ? BEEP.hi : BEEP.lo, t, BEEP.dur);
+      const at = t;
+      timers.push(setTimeout(() => onStep(r, i, b), (at - c.currentTime) * 1000));
+      t += BEEP.dur + BEEP.gap;
+    });
+    t += BEEP.byteGap;
+  });
+  timers.push(setTimeout(() => onStep(-1), (t - c.currentTime - BEEP.byteGap) * 1000));
+}
+const bitsOf = (v, w) => bin(v, w).split('').map(Number);
+
+/* ---------- Beep Decoder ---------- */
+const WORDS = ['BIT', 'BYTE', 'CODE', 'DATA', 'CHIP', 'LOOP', 'BUG', 'RAM', 'CPU', 'DISK', 'KEY', 'APP', 'WEB', 'GAME', 'MAZE', 'ZAP'];
+const bd = { level: 1, width: 4, targets: [], answer: '', rows: [], solved: false };
+const playIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.5v13l11-6.5z"/></svg>';
+function bdNew(){
+  stopAll();
+  if (bd.level === 1){ bd.width = 4; const v = 1 + rand(15); bd.targets = [v]; bd.answer = String(v); }
+  else if (bd.level === 2){ bd.width = 8; const v = 65 + rand(26); bd.targets = [v]; bd.answer = String.fromCharCode(v); }
+  else { bd.width = 8; const w = pick(WORDS); bd.targets = [...w].map(ch => ch.charCodeAt(0)); bd.answer = w; }
+  bd.solved = false;
+  const box = $('#bd-bits'); box.innerHTML = '';
+  box.style.setProperty('--n', bd.width);
+  const head = el('div', 'brow head'); head.style.setProperty('--n', bd.width);
+  head.append(el('span'));
+  for (let i = bd.width - 1; i >= 0; i--) head.append(el('span', null, String(2 ** i)));
+  head.append(el('span'));
+  box.append(head);
+  bd.rows = bd.targets.map((v, r) => {
+    const row = el('div', 'brow'); row.style.setProperty('--n', bd.width);
+    const pb = el('button', 'playrow'); pb.type = 'button'; pb.innerHTML = playIcon;
+    pb.setAttribute('aria-label', bd.targets.length > 1 ? `Play letter ${r + 1}` : 'Play beeps');
+    pb.addEventListener('click', () => bdPlay([r]));
+    row.append(pb);
+    const bits = [], btns = [], bars = [];
+    for (let i = 0; i < bd.width; i++){
+      const b = el('button', 'bit'); b.type = 'button';
+      const bar = el('span', 'bar'), d = el('span', null, '0');
+      b.append(bar, d); bits.push(0); btns.push(b); bars.push(bar);
+      b.setAttribute('aria-label', `Bit ${i + 1}, place value ${2 ** (bd.width - 1 - i)}, currently 0`);
+      b.addEventListener('click', () => {
+        bits[i] = 1 - bits[i]; d.textContent = bits[i];
+        b.setAttribute('aria-label', `Bit ${i + 1}, place value ${2 ** (bd.width - 1 - i)}, currently ${bits[i]}`);
+        mark.textContent = ''; mark.className = 'mark';
+      });
+      row.append(b);
+    }
+    const mark = el('span', 'mark'); row.append(mark);
+    box.append(row);
+    return { bits, btns, bars, mark };
+  });
+  const lab = { 1: 'What number is it in denary?', 2: 'Which letter is it?', 3: 'What is the secret word?' }[bd.level];
+  $('#bd-qlabel').textContent = lab;
+  const inp = $('#bd-answer'); inp.value = '';
+  inp.inputMode = bd.level === 1 ? 'numeric' : 'text';
+  inp.style.width = bd.level === 3 ? '9ch' : '6ch';
+  inp.maxLength = bd.level === 3 ? 6 : bd.level === 2 ? 1 : 3;
+  $('#bd-ascii').hidden = bd.level === 1;
+  $('#bd-fb').className = 'fb'; $('#bd-fb').textContent = '';
+}
+function bdPlay(which){
+  const visual = $('#bd-visual').checked;
+  which.forEach(r => bd.rows[r].bars.forEach(b => b.className = 'bar'));
+  playRows(which.map(r => bitsOf(bd.targets[r], bd.width)), (k, i, b) => {
+    $$('#bd-bits .bit.now').forEach(x => x.classList.remove('now'));
+    if (k < 0) return;
+    const row = bd.rows[which[k]];
+    row.btns[i].classList.add('now');
+    row.bars[i].className = 'bar ' + (visual ? (b ? 'hi' : 'lo') : 'heard');
+  });
+}
+$('#bd-play').addEventListener('click', () => bdPlay(bd.rows.map((_, i) => i)));
+$('#bd-hear1').addEventListener('click', () => playRows([[1]]));
+$('#bd-hear0').addEventListener('click', () => playRows([[0]]));
+$('#bd-next').addEventListener('click', bdNew);
+$$('#bd-level button').forEach(b => b.addEventListener('click', () => {
+  $$('#bd-level button').forEach(x => x.setAttribute('aria-pressed', x === b)); bd.level = +b.dataset.l; bdNew();
+}));
+function placeSum(v, w){
+  const parts = []; for (let i = w - 1; i >= 0; i--) if (v & (1 << i)) parts.push(2 ** i);
+  return parts.join(' + ') + ' = ' + v;
+}
+$('#bd-form').addEventListener('submit', e => {
+  e.preventDefault();
+  const fb = $('#bd-fb');
+  const ans = $('#bd-answer').value.trim().toUpperCase();
+  let rowsOk = 0;
+  bd.rows.forEach((row, r) => {
+    const ok = row.bits.join('') === bin(bd.targets[r], bd.width);
+    row.mark.textContent = ok ? '✓' : '✗'; row.mark.className = 'mark ' + (ok ? 'ok' : 'bad');
+    if (ok) rowsOk++;
+  });
+  if (!ans){ feedback(fb, 'info', 'Type your answer in the box first.'); return; }
+  if (ans === bd.answer){
+    const work = bd.targets.map(v => `${bin(v, bd.width)} → ${placeSum(v, bd.width)}${bd.level > 1 ? ' → ' + String.fromCharCode(v) : ''}`).join('\n');
+    feedback(fb, 'ok', bd.level === 3 ? `Cracked it. The word is ${bd.answer}.` : `Correct, it’s ${bd.answer}.`, work);
+    fb.querySelector('.work').style.whiteSpace = 'pre-wrap';
+    if (!bd.solved){ bd.solved = true; award(true); }
+  } else {
+    feedback(fb, 'bad', rowsOk === bd.rows.length
+      ? 'Your bits are right, but the answer isn’t. Add up the place values above each 1 again.'
+      : 'Some bits don’t match the beeps. Rows marked ✗ need another listen.');
+    award(false);
+  }
+});
+(function asciiTable(){
+  const g = $('#bd-asciigrid');
+  for (let c = 65; c <= 90; c++) g.append(el('span', null, `${String.fromCharCode(c)} ${c}`));
+})();
+bdNew();
+
+/* ---------- Beep Maker ---------- */
+function bmRender(){
+  const box = $('#bm-rows'); box.innerHTML = '';
+  const txt = $('#bm-text').value.toUpperCase().replace(/[^\x20-\x7E]/g, '');
+  return [...txt].map(ch => {
+    const code = ch.charCodeAt(0);
+    const row = el('div', 'mrow');
+    const bits = el('span');
+    const spans = bin(code, 8).split('').map(b => { const s = el('span', 'b', b); bits.append(s); return s; });
+    row.append(el('span', 'ch', ch === ' ' ? '␣' : ch), bits, el('span', 'dn', String(code)));
+    box.append(row);
+    return { code, row, spans };
+  });
+}
+let bmData = bmRender();
+$('#bm-text').addEventListener('input', () => { stopAll(); bmData = bmRender(); });
+$('#bm-play').addEventListener('click', () => {
+  if (!bmData.length) return;
+  playRows(bmData.map(d => bitsOf(d.code, 8)), (r, i) => {
+    $$('#bm-rows .now').forEach(x => x.classList.remove('now'));
+    if (r < 0) return;
+    bmData[r].row.classList.add('now'); bmData[r].spans[i].classList.add('now');
+  });
+});
+$('#bm-stop').addEventListener('click', stopAll);
+
+/* ---------- Sampling Lab ---------- */
+const RATES = [1000, 2000, 4000, 8000, 11025, 22050, 44100];
+const DEPTHS = [1, 2, 3, 4, 5, 6, 8, 16];
+const F0 = 220;
+const wave = t => 0.6 * Math.sin(2 * Math.PI * F0 * t) + 0.3 * Math.sin(2 * Math.PI * 3 * F0 * t + 0.5) + 0.1 * Math.sin(2 * Math.PI * 5 * F0 * t);
+function quant(v, bits){ const L = 2 ** bits - 1; return Math.round((v + 1) / 2 * L) / L * 2 - 1; }
+const spRate = () => RATES[+$('#sp-rate').value];
+const spDepth = () => DEPTHS[+$('#sp-depth').value];
+function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function drawScope(){
+  const cv = $('#sp-canvas'); if (cv.offsetParent === null) return;
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const x = cv.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, W, H);
+  const rate = spRate(), bits = spDepth(), T = 2 / F0, pad = 14;
+  const X = t => t / T * W, Y = v => pad + (1 - v) / 2 * (H - 2 * pad);
+  const L = 2 ** bits;
+  x.strokeStyle = cssVar('--line'); x.lineWidth = 1;
+  if (L <= 32){ for (let k = 0; k < L; k++){ const y = Y(k / (L - 1) * 2 - 1); x.beginPath(); x.moveTo(0, y); x.lineTo(W, y); x.stroke(); } }
+  x.strokeStyle = cssVar('--muted'); x.lineWidth = 2; x.beginPath();
+  for (let px = 0; px <= W; px++){ const v = wave(px / W * T); px ? x.lineTo(px, Y(v)) : x.moveTo(px, Y(v)); }
+  x.stroke();
+  const n = Math.floor(T * rate);
+  x.strokeStyle = cssVar('--wave'); x.fillStyle = cssVar('--wave'); x.lineWidth = 2.5; x.beginPath();
+  for (let k = 0; k <= n; k++){
+    const t = k / rate, v = quant(wave(t), bits), y = Y(v), x0 = X(t), x1 = Math.min(W, X((k + 1) / rate));
+    k ? x.lineTo(x0, y) : x.moveTo(x0, y); x.lineTo(x1, y);
+  }
+  x.stroke();
+  if (n <= 90) for (let k = 0; k <= n; k++){ const t = k / rate; x.beginPath(); x.arc(X(t), Y(quant(wave(t), bits)), 3.5, 0, 7); x.fill(); }
+  spStats(n + 1);
+}
+function spStats(shown){
+  const rate = spRate(), bits = spDepth();
+  $('#sp-rate-out').textContent = `${fmt(rate)} Hz (${fmt(rate)} samples every second)`;
+  $('#sp-depth-out').textContent = `${bits} bit${bits > 1 ? 's' : ''} (${fmt(2 ** bits)} levels)`;
+  const perSec = rate * bits, song = perSec * 180 / 8;
+  const box = $('#sp-stats'); box.innerHTML = '';
+  [[fmt(shown), 'samples on this screen'], [fmt(2 ** bits), 'possible levels per sample'], [fmt(perSec), 'bits for 1 second'],
+   [`${(song / 1e6).toLocaleString('en-GB', { maximumFractionDigits: 1 })} million`, 'bytes for a 3-minute song']].forEach(([b, s]) => {
+    const n = el('div', 'stat'); n.append(el('b', null, b), el('span', null, s)); box.append(n);
+  });
+}
+function spPlay(sampled){
+  stopAll();
+  const c = ac(), sr = c.sampleRate, len = Math.floor(sr * 1.6), buf = c.createBuffer(1, len, sr), d = buf.getChannelData(0);
+  const rate = spRate(), bits = spDepth();
+  for (let i = 0; i < len; i++){
+    const t = i / sr;
+    const v = sampled ? quant(wave(Math.floor(t * rate) / rate), bits) : wave(t);
+    const env = Math.min(1, i / (sr * 0.02), (len - i) / (sr * 0.06));
+    d[i] = v * 0.25 * env;
+  }
+  const src = c.createBufferSource(); src.buffer = buf; src.connect(c.destination); src.start(); nodes.push(src);
+}
+$('#sp-rate').addEventListener('input', drawScope);
+$('#sp-depth').addEventListener('input', drawScope);
+$('#sp-orig').addEventListener('click', () => spPlay(false));
+$('#sp-samp').addEventListener('click', () => spPlay(true));
+$$('[data-preset]').forEach(b => b.addEventListener('click', () => {
+  const [r, d] = b.dataset.preset.split(',');
+  $('#sp-rate').value = r; $('#sp-depth').value = d; drawScope(); spPlay(true);
+}));
+window.addEventListener('resize', drawScope);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawScope);
+new MutationObserver(drawScope).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+/* deep links: #pixels or #sound */
+if (location.hash === '#sound') showMode('sound');
+</script>
+</body>
+</html>
