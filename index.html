@@ -64,6 +64,7 @@ button{font:inherit; color:inherit}
 .mode{background:none; border:0; border-bottom:4px solid transparent; margin-bottom:-2px; padding:10px 6px 10px; font-family:var(--f-display); font-size:24px; color:var(--muted); cursor:pointer; display:flex; align-items:center; gap:8px}
 .mode[aria-selected="true"]{color:var(--ink); border-bottom-color:var(--accent)}
 .mode small{font-family:var(--f-mono); font-size:12px; color:var(--muted)}
+[hidden]{display:none !important}
 .games{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px}
 .chip{border:1.5px solid var(--line); background:var(--surface); border-radius:999px; padding:7px 14px; cursor:pointer; font-weight:700; font-size:15px}
 .chip[aria-pressed="true"]{background:var(--ink); color:var(--bg); border-color:var(--ink)}
@@ -114,6 +115,7 @@ button{font:inherit; color:inherit}
 .codes input{font-family:var(--f-mono); font-size:16px; width:8.6ch; height:calc(var(--cell) - 2px); padding:0 6px; border:1.5px solid var(--line); border-radius:5px; background:var(--surface); color:var(--ink); letter-spacing:.06em}
 .codes input.ok{border-color:var(--good); background:var(--good-bg)}
 .codes input.bad{border-color:var(--bad); background:var(--bad-bg)}
+.codes .mark{width:1.4em; font-size:18px}
 .palette{display:flex; flex-wrap:wrap; gap:8px}
 .sw{display:flex; align-items:center; gap:8px; border:1.5px solid var(--line); background:var(--surface); border-radius:8px; padding:5px 10px 5px 5px; font-size:14px; cursor:pointer}
 .sw.static{cursor:default}
@@ -724,7 +726,16 @@ $$('#dec-level button').forEach(b => b.addEventListener('click', () => {
 decNew();
 
 /* ---------- Pixel Encoder ---------- */
-const enc = { img: null, inputs: [], solved: false, last: -1 };
+const enc = { img: null, inputs: [], marks: [], solved: false, last: -1 };
+function encMark(r, state){
+  enc.inputs[r].className = state;
+  enc.marks[r].textContent = state === 'ok' ? '✓' : state === 'bad' ? '✗' : '';
+  enc.marks[r].className = 'mark ' + state;
+}
+function encWin(){
+  feedback($('#enc-fb'), 'ok', `All 8 rows are right. You turned a ${enc.img.name} into 64 bits.`);
+  if (!enc.solved){ enc.solved = true; award(true); }
+}
 function encNew(){
   let i; do { i = rand(IMG1.length); } while (i === enc.last);
   enc.last = i; enc.img = IMG1[i]; enc.solved = false;
@@ -732,16 +743,21 @@ function encNew(){
   const grid = makeGrid(8, 8, 1, { interactive: false });
   grid.set(toVals(enc.img.rows));
   const codes = el('div', 'codes');
+  enc.marks = [];
   enc.inputs = enc.img.rows.map((_, r) => {
     const inp = el('input'); inp.id = 'enc-row-' + r;
     Object.assign(inp, { inputMode: 'numeric', maxLength: 8, autocomplete: 'off', spellcheck: false, placeholder: '········' });
     inp.setAttribute('aria-label', `Row ${r + 1} binary`);
     inp.addEventListener('input', () => {
-      inp.value = inp.value.replace(/[^01]/g, '').slice(0, 8); inp.className = '';
+      inp.value = inp.value.replace(/[^01]/g, '').slice(0, 8);
+      const ok = inp.value === enc.img.rows[r];
+      encMark(r, ok ? 'ok' : '');
+      if (ok && enc.inputs.every((x, i) => x.value === enc.img.rows[i])) encWin();
       if (inp.value.length === 8 && enc.inputs[r + 1]) enc.inputs[r + 1].focus();
     });
     inp.addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); (enc.inputs[r + 1] || $('#enc-check')).focus(); } });
-    const wrap = el('div', 'code'); wrap.append(inp); codes.append(wrap);
+    const mark = el('span', 'mark'); mark.setAttribute('aria-hidden', 'true'); enc.marks.push(mark);
+    const wrap = el('div', 'code'); wrap.append(inp, mark); codes.append(wrap);
     return inp;
   });
   board.append(grid.el, codes);
@@ -749,16 +765,14 @@ function encNew(){
 }
 $('#enc-check').addEventListener('click', () => {
   let right = 0;
-  enc.inputs.forEach((inp, r) => { const ok = inp.value === enc.img.rows[r]; inp.className = ok ? 'ok' : 'bad'; if (ok) right++; });
-  if (right === 8){
-    feedback($('#enc-fb'), 'ok', `All 8 rows are right. You turned a ${enc.img.name} into 64 bits.`);
-    if (!enc.solved){ enc.solved = true; award(true); }
-  } else {
+  enc.inputs.forEach((inp, r) => { const ok = inp.value === enc.img.rows[r]; encMark(r, ok ? 'ok' : 'bad'); if (ok) right++; });
+  if (right === 8) encWin();
+  else {
     feedback($('#enc-fb'), 'bad', `${right} of 8 rows are right. Fix the red rows. Check each one has 8 bits.`);
     award(false);
   }
 });
-$('#enc-hint').addEventListener('click', () => { enc.inputs[0].value = enc.img.rows[0]; enc.inputs[0].className = 'ok'; enc.inputs[1].focus(); });
+$('#enc-hint').addEventListener('click', () => { enc.inputs[0].value = enc.img.rows[0]; encMark(0, 'ok'); enc.inputs[1].focus(); });
 $('#enc-next').addEventListener('click', encNew);
 encNew();
 
