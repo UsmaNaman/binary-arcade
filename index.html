@@ -14,6 +14,7 @@
   --bg:#eceff6; --surface:#ffffff; --ink:#151a2d; --muted:#565d78; --line:#d2d7e4;
   --accent:#2c49d8; --accent-soft:#dfe5fb; --on-accent:#ffffff; --wave:#c2410c;
   --good:#146c36; --good-bg:#dcf3e4; --bad:#b42323; --bad-bg:#fbe3e3; --px-line:#b7bdd0;
+  --bulb:#ffc21a; --bulb-glow:#ffe9a8; --bulb-off:#dde1ec; --bulb-rim:#b88500;
   --f-display:"Pixelify Sans", ui-monospace, Menlo, monospace;
   --f-body:"Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono:"JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
@@ -24,6 +25,7 @@
     --bg:#0f1220; --surface:#181c2d; --ink:#e7e9f3; --muted:#9ca3bf; --line:#2d3349;
     --accent:#8299ff; --accent-soft:#252d52; --on-accent:#0c0f1c; --wave:#fb923c;
     --good:#5ee08f; --good-bg:#13301f; --bad:#ff8080; --bad-bg:#3b1818; --px-line:#3a4160;
+    --bulb:#ffcf40; --bulb-glow:#fff3c4; --bulb-off:#262b40; --bulb-rim:#ffdf80;
     color-scheme:dark;
   }
 }
@@ -31,6 +33,7 @@
   --bg:#0f1220; --surface:#181c2d; --ink:#e7e9f3; --muted:#9ca3bf; --line:#2d3349;
   --accent:#8299ff; --accent-soft:#252d52; --on-accent:#0c0f1c; --wave:#fb923c;
   --good:#5ee08f; --good-bg:#13301f; --bad:#ff8080; --bad-bg:#3b1818; --px-line:#3a4160;
+  --bulb:#ffcf40; --bulb-glow:#fff3c4; --bulb-off:#262b40; --bulb-rim:#ffdf80;
   color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -167,8 +170,26 @@ details.ascii summary{cursor:pointer; font-weight:700}
 .legend{display:flex; gap:16px; flex-wrap:wrap; font-size:14px; color:var(--muted)}
 .legend i{display:inline-block; width:18px; height:4px; border-radius:2px; vertical-align:middle; margin-right:6px}
 
+/* bulbs */
+.target{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap}
+.target b{font-family:var(--f-display); font-size:clamp(48px, 12vw, 72px); line-height:1; font-variant-numeric:tabular-nums}
+.bulbs{display:grid; grid-template-columns:repeat(var(--n), minmax(0, 64px)); gap:clamp(4px, 1.6vw, 12px)}
+.bcol{display:flex; flex-direction:column; align-items:center; gap:6px; min-width:0}
+.bcol .pv{font-family:var(--f-mono); font-size:clamp(11px, 3vw, 14px); color:var(--muted)}
+.bcol .bd{font-family:var(--f-mono); font-size:clamp(16px, 4.4vw, 22px); font-weight:600}
+.bulb{width:100%; aspect-ratio:1; border-radius:50%; border:2px solid var(--line); background:var(--bulb-off); cursor:pointer; padding:0; transition:background .15s, box-shadow .15s, border-color .15s}
+.bulb.on{background:radial-gradient(circle at 38% 34%, var(--bulb-glow), var(--bulb) 62%); border-color:var(--bulb-rim); box-shadow:0 0 18px 3px color-mix(in srgb, var(--bulb) 55%, transparent)}
+.bulbs.locked .bulb{cursor:default}
+.sum{font-family:var(--f-mono); font-size:17px; min-height:1.6em; overflow-wrap:anywhere}
+.clock{font-family:var(--f-display); font-size:22px; font-variant-numeric:tabular-nums}
+
+/* rle */
+.board.rle{--cell:clamp(22px, 6.4vw, 36px)}
+.codes input.rlein{width:15ch; text-transform:uppercase; letter-spacing:.02em}
+.codes .code.rle{letter-spacing:.02em}
+
 .foot{color:var(--muted); font-size:14px; padding-block:0 32px}
-@media (prefers-reduced-motion: reduce){ .btn{transition:none} }
+@media (prefers-reduced-motion: reduce){ .btn, .bulb{transition:none} }
 </style>
 </head>
 <body>
@@ -189,14 +210,19 @@ details.ascii summary{cursor:pointer; font-weight:700}
 
 <main class="wrap">
   <div class="modes" role="tablist">
-    <button class="mode" role="tab" id="tab-pixels" data-mode="pixels" aria-selected="true">Pixels <small>bitmaps</small></button>
+    <button class="mode" role="tab" id="tab-numbers" data-mode="numbers" aria-selected="true">Numbers <small>place value</small></button>
+    <button class="mode" role="tab" id="tab-pixels" data-mode="pixels" aria-selected="false">Pixels <small>bitmaps</small></button>
     <button class="mode" role="tab" id="tab-sound" data-mode="sound" aria-selected="false">Sound <small>beeps &amp; samples</small></button>
   </div>
 
-  <div class="games" id="games-pixels">
+  <div class="games" id="games-numbers">
+    <button class="chip" data-game="nm-bulbs" aria-pressed="true">Binary Bulbs</button>
+  </div>
+  <div class="games" id="games-pixels" hidden>
     <button class="chip" data-game="px-decode" aria-pressed="true">Pixel Decoder</button>
     <button class="chip" data-game="px-encode" aria-pressed="false">Pixel Encoder</button>
     <button class="chip" data-game="px-studio" aria-pressed="false">Colour Studio</button>
+    <button class="chip" data-game="px-rle" aria-pressed="false">RLE Squash</button>
     <button class="chip" data-game="px-size" aria-pressed="false">Image File Size</button>
   </div>
   <div class="games" id="games-sound" hidden>
@@ -206,8 +232,85 @@ details.ascii summary{cursor:pointer; font-weight:700}
     <button class="chip" data-game="sd-size" aria-pressed="false">Sound File Size</button>
   </div>
 
+  <!-- BINARY BULBS -->
+  <section class="game" id="nm-bulbs">
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <h2>Binary Bulbs</h2>
+        <div class="row">
+          <div class="seg" id="bb-mode">
+            <button data-m="make" aria-pressed="true">Make it</button>
+            <button data-m="read" aria-pressed="false">Read it</button>
+          </div>
+          <div class="seg" id="bb-size">
+            <button data-n="4" aria-pressed="false">4 bulbs</button>
+            <button data-n="8" aria-pressed="true">8 bulbs</button>
+          </div>
+        </div>
+      </div>
+      <p class="lede" id="bb-lede"></p>
+      <div class="target" id="bb-target"><span class="eyebrow">Make this number</span><b id="bb-num">0</b></div>
+      <div class="bulbs" id="bb-bulbs"></div>
+      <div class="sum" id="bb-sum" aria-live="polite"></div>
+      <form class="answer" id="bb-form" autocomplete="off" hidden>
+        <label for="bb-answer">What number is this in denary?</label>
+        <input id="bb-answer" type="text" inputmode="numeric" maxlength="3">
+        <button class="btn primary" type="submit">Check</button>
+      </form>
+      <div class="fb" id="bb-fb" aria-live="polite"></div>
+      <div class="row">
+        <button class="btn primary" id="bb-timer">Start 60-second challenge</button>
+        <button class="btn ghost" id="bb-skip">Skip</button>
+        <span class="clock" id="bb-clock"></span>
+      </div>
+    </div>
+    <aside class="keys">
+      <h3>Key words</h3>
+      <dl>
+        <dt>Bit</dt><dd>A single binary digit, 1 or 0. Like a bulb, it is either on or off.</dd>
+        <dt>Place value</dt><dd>Each column is worth double the one to its right: 1, 2, 4, 8, 16, 32, 64, 128.</dd>
+        <dt>Denary</dt><dd>The base 10 number system we normally count in.</dd>
+        <dt>Byte</dt><dd>8 bits. The biggest number a byte can hold is 11111111, which is 255.</dd>
+      </dl>
+      <div class="formula">10010110<br>= 128 + 16 + 4 + 2<br>= 150</div>
+    </aside>
+  </section>
+
+  <!-- RLE SQUASH -->
+  <section class="game" id="px-rle" hidden>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <h2>RLE Squash</h2>
+        <div class="seg" id="rl-mode">
+          <button data-m="squash" aria-pressed="true">Squash it</button>
+          <button data-m="unsquash" aria-pressed="false">Unsquash it</button>
+        </div>
+      </div>
+      <p class="lede" id="rl-lede"></p>
+      <div class="board rle" id="rl-board"></div>
+      <div class="fb" id="rl-fb" aria-live="polite"></div>
+      <div class="stats" id="rl-stats" hidden></div>
+      <div class="row">
+        <button class="btn primary" id="rl-check">Check</button>
+        <button class="btn" id="rl-hint">Show me row 1</button>
+        <button class="btn ghost" id="rl-next">New picture</button>
+      </div>
+    </div>
+    <aside class="keys">
+      <h3>Key words</h3>
+      <dl>
+        <dt>Compression</dt><dd>Making a file smaller so it takes less space and sends faster.</dd>
+        <dt>Run</dt><dd>A group of pixels next to each other that are all the same colour.</dd>
+        <dt>Run-length encoding</dt><dd>Store each run as a count and a colour, instead of every pixel.</dd>
+        <dt>Lossless</dt><dd>You get back exactly the same picture when you unsquash it. Nothing is lost.</dd>
+      </dl>
+      <div class="formula">WWWBBBBW<br>→ 3W 4B 1W</div>
+      <p class="lede" style="font-size:15px">RLE works best with big blocks of one colour. Try to find a picture where it makes the file bigger.</p>
+    </aside>
+  </section>
+
   <!-- PIXEL DECODER -->
-  <section class="game" id="px-decode">
+  <section class="game" id="px-decode" hidden>
     <div class="panel">
       <div class="row" style="justify-content:space-between">
         <h2>Pixel Decoder</h2>
@@ -473,18 +576,19 @@ function feedback(node, kind, msg, work){
 });
 
 /* ---------- navigation ---------- */
-const modeGames = { pixels: 'px-decode', sound: 'sd-decode' };
+const modeGames = { numbers: 'nm-bulbs', pixels: 'px-decode', sound: 'sd-decode' };
+const modeOf = id => ({ nm: 'numbers', px: 'pixels', sd: 'sound' })[id.slice(0, 2)];
 function showGame(id){
   $$('.game').forEach(g => g.hidden = g.id !== id);
   $$('.chip[data-game]').forEach(c => c.setAttribute('aria-pressed', c.dataset.game === id));
-  modeGames[id.startsWith('px') ? 'pixels' : 'sound'] = id;
+  modeGames[modeOf(id)] = id;
   stopAll();
+  if (id !== 'nm-bulbs') bbStopTimer();
   if (id === 'sd-sample') drawScope();
 }
 function showMode(m){
   $$('.mode').forEach(t => t.setAttribute('aria-selected', t.dataset.mode === m));
-  $('#games-pixels').hidden = m !== 'pixels';
-  $('#games-sound').hidden = m !== 'sound';
+  Object.keys(modeGames).forEach(k => $('#games-' + k).hidden = k !== m);
   showGame(modeGames[m]);
 }
 $$('.mode').forEach(t => t.addEventListener('click', () => showMode(t.dataset.mode)));
@@ -979,8 +1083,215 @@ window.addEventListener('resize', drawScope);
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawScope);
 new MutationObserver(drawScope).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
-/* deep links: #pixels or #sound */
-if (location.hash === '#sound') showMode('sound');
+/* ---------- Binary Bulbs ---------- */
+const bb = { mode: 'make', n: 8, bits: [], target: 0, locked: false, running: false, end: 0, count: 0, tick: null };
+function bbBestKey(){ return `binary-arcade-best-${bb.mode}-${bb.n}`; }
+function bbNew(){
+  const max = 2 ** bb.n - 1;
+  let v; do { v = 1 + rand(max); } while (v === bb.target);
+  bb.target = v; bb.locked = false;
+  bb.bits = bb.mode === 'make' ? new Array(bb.n).fill(0) : bitsOf(v, bb.n);
+  const make = bb.mode === 'make';
+  $('#bb-lede').textContent = make
+    ? 'Each bulb is one bit. Switch bulbs on until they add up to the number. A lit bulb is 1 and a dark bulb is 0.'
+    : 'Some bulbs are lit. Add up the place values above the lit bulbs and type the number in denary.';
+  $('#bb-target').hidden = !make;
+  $('#bb-num').textContent = v;
+  $('#bb-form').hidden = make;
+  $('#bb-answer').value = '';
+  $('#bb-fb').className = 'fb'; $('#bb-fb').textContent = '';
+  bbRender();
+  if (!make) $('#bb-answer').focus({ preventScroll: true });
+}
+function bbValue(){ return bb.bits.reduce((a, b) => a * 2 + b, 0); }
+function bbRender(){
+  const box = $('#bb-bulbs'); box.innerHTML = '';
+  box.style.setProperty('--n', bb.n);
+  box.classList.toggle('locked', bb.mode === 'read');
+  bb.bits.forEach((b, i) => {
+    const pv = 2 ** (bb.n - 1 - i);
+    const col = el('div', 'bcol');
+    const bulb = el('button', 'bulb' + (b ? ' on' : '')); bulb.type = 'button';
+    bulb.setAttribute('aria-label', `Bulb worth ${pv}`);
+    bulb.setAttribute('aria-pressed', b ? 'true' : 'false');
+    if (bb.mode === 'read') bulb.disabled = true;
+    bulb.addEventListener('click', () => bbToggle(i));
+    col.append(el('span', 'pv', String(pv)), bulb, el('span', 'bd', String(b)));
+    box.append(col);
+  });
+  const v = bbValue();
+  const parts = bb.bits.map((b, i) => b ? 2 ** (bb.n - 1 - i) : 0).filter(Boolean);
+  // in Read mode the total is the answer, so only show it once solved
+  const showTotal = bb.mode === 'make' || bb.locked;
+  $('#bb-sum').textContent = `${bb.bits.join('')} = ` + (showTotal ? (parts.length > 1 ? parts.join(' + ') + ' = ' : '') + v : '?');
+}
+function bbToggle(i){
+  if (bb.mode !== 'make' || bb.locked) return;
+  bb.bits[i] ^= 1; bbRender();
+  $(`#bb-bulbs .bcol:nth-child(${i + 1}) .bulb`).focus({ preventScroll: true });
+  if (bbValue() === bb.target) bbWin();
+}
+function bbWin(){
+  bb.locked = true; bbRender();
+  feedback($('#bb-fb'), 'ok', `Correct! ${bb.bits.join('')} is ${bb.target}.`);
+  award(true);
+  if (bb.running){ bb.count++; bbClock(); }
+  setTimeout(() => { if (bb.locked) bbNew(); }, bb.running ? 700 : 1400);
+}
+$('#bb-form').addEventListener('submit', e => {
+  e.preventDefault();
+  if (bb.locked) return;
+  const raw = $('#bb-answer').value.trim();
+  if (!raw){ feedback($('#bb-fb'), 'info', 'Type a number first.'); return; }
+  if (Number(raw) === bb.target) bbWin();
+  else { feedback($('#bb-fb'), 'bad', 'Not quite. Add up the numbers above each lit bulb.'); award(false); }
+});
+$('#bb-answer').addEventListener('input', e => e.target.value = e.target.value.replace(/\D/g, ''));
+$('#bb-skip').addEventListener('click', bbNew);
+function bbClock(){
+  if (!bb.running){ return; }
+  const left = Math.max(0, Math.ceil((bb.end - Date.now()) / 1000));
+  $('#bb-clock').textContent = `0:${String(left).padStart(2, '0')} · ${bb.count} solved`;
+  if (left === 0) bbFinish();
+}
+function bbStopTimer(){
+  clearInterval(bb.tick); bb.running = false;
+  $('#bb-timer').textContent = 'Start 60-second challenge';
+}
+function bbFinish(){
+  bbStopTimer();
+  let best = 0;
+  try { best = +localStorage.getItem(bbBestKey()) || 0; if (bb.count > best) localStorage.setItem(bbBestKey(), bb.count); } catch (e) {}
+  $('#bb-clock').textContent = `Time! ${bb.count} solved`;
+  feedback($('#bb-fb'), 'info', bb.count > best
+    ? `Time’s up. You solved ${bb.count}. That’s your new best!`
+    : `Time’s up. You solved ${bb.count}. Your best is ${best}.`);
+  bb.locked = true;
+}
+$('#bb-timer').addEventListener('click', () => {
+  if (bb.running){ bbStopTimer(); $('#bb-clock').textContent = ''; return; }
+  bb.running = true; bb.count = 0; bb.end = Date.now() + 60000;
+  $('#bb-timer').textContent = 'Stop challenge';
+  bbNew(); bbClock();
+  bb.tick = setInterval(bbClock, 250);
+});
+function bbSeg(sel, key, attr, parse){
+  $$(sel + ' button').forEach(b => b.addEventListener('click', () => {
+    $$(sel + ' button').forEach(x => x.setAttribute('aria-pressed', x === b));
+    bb[key] = parse(b.dataset[attr]);
+    if (bb.running){ bbStopTimer(); $('#bb-clock').textContent = ''; }
+    bbNew();
+  }));
+}
+bbSeg('#bb-mode', 'mode', 'm', String);
+bbSeg('#bb-size', 'n', 'n', Number);
+bbNew();
+
+/* ---------- RLE Squash ---------- */
+const RLE_BANK = IMG1.concat([
+  { name: 'picture frame', rows: ['11111111','10000001','10000001','10000001','10000001','10000001','10000001','11111111'] },
+  { name: 'set of stripes', rows: ['11111111','11111111','00000000','00000000','11111111','11111111','00000000','00000000'] },
+  { name: 'checkerboard', rows: ['10101010','01010101','10101010','01010101','10101010','01010101','10101010','01010101'] },
+  { name: 'staircase', rows: ['10000000','11000000','11100000','11110000','11111000','11111100','11111110','11111111'] }
+]);
+function runsOf(row){
+  const out = []; let c = row[0], k = 0;
+  for (const ch of row){ if (ch === c) k++; else { out.push([k, c]); c = ch; k = 1; } }
+  out.push([k, c]); return out;
+}
+const rleText = row => runsOf(row).map(([k, c]) => k + (c === '1' ? 'B' : 'W')).join(' ');
+function rleDecode(s){
+  s = s.toUpperCase().replace(/\s+/g, '');
+  if (!/^(\d+[WB])+$/.test(s)) return null;
+  let out = '';
+  for (const m of s.matchAll(/(\d+)([WB])/g)){ const k = +m[1]; if (k < 1 || k > 8) return null; out += (m[2] === 'B' ? '1' : '0').repeat(k); }
+  return out;
+}
+const rl = { mode: 'squash', img: null, grid: null, inputs: [], solved: false, last: -1 };
+function rlNew(){
+  let i; do { i = rand(RLE_BANK.length); } while (i === rl.last);
+  rl.last = i; rl.img = RLE_BANK[i]; rl.solved = false;
+  const board = $('#rl-board'); board.innerHTML = '';
+  const codes = el('div', 'codes');
+  const squash = rl.mode === 'squash';
+  if (squash){
+    $('#rl-lede').textContent = 'Write each row as runs: how many pixels, then W for white or B for black. A row of WWWBBBBW becomes 3W 4B 1W.';
+    rl.grid = makeGrid(8, 8, 1, { interactive: false });
+    rl.grid.set(toVals(rl.img.rows));
+    rl.inputs = rl.img.rows.map((_, r) => {
+      const inp = el('input', 'rlein'); inp.id = 'rl-row-' + r;
+      Object.assign(inp, { maxLength: 24, autocomplete: 'off', spellcheck: false, placeholder: r === 0 ? 'e.g. 3W 4B 1W' : '' });
+      inp.setAttribute('aria-label', `Row ${r + 1} runs`);
+      inp.addEventListener('input', () => { inp.value = inp.value.toUpperCase().replace(/[^0-9WB ]/g, ''); inp.classList.remove('ok', 'bad'); });
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); (rl.inputs[r + 1] || $('#rl-check')).focus(); } });
+      const wrap = el('div', 'code'); wrap.append(inp); codes.append(wrap);
+      return inp;
+    });
+    board.append(rl.grid.el, codes);
+  } else {
+    $('#rl-lede').textContent = 'Each row is squashed into runs. 3W means 3 white pixels and 2B means 2 black pixels. Paint the picture back.';
+    rl.img.rows.forEach(r => codes.append(el('div', 'code rle', rleText(r))));
+    rl.grid = makeGrid(8, 8, 1);
+    rl.inputs = [];
+    board.append(codes, rl.grid.el);
+  }
+  $('#rl-hint').hidden = !squash;
+  $('#rl-stats').hidden = true;
+  $('#rl-fb').className = 'fb'; $('#rl-fb').textContent = '';
+}
+function rlStats(){
+  const runs = rl.img.rows.reduce((a, r) => a + runsOf(r).length, 0);
+  const rleVals = runs * 2, diff = Math.round((1 - rleVals / 64) * 100);
+  const box = $('#rl-stats'); box.innerHTML = ''; box.hidden = false;
+  [['64', 'values as a bitmap (one per pixel)'], [String(runs), 'runs in the picture'],
+   [String(rleVals), `values with RLE (${runs} runs × 2)`],
+   [diff >= 0 ? `${diff}% smaller` : `${-diff}% bigger`, diff >= 0 ? 'RLE saved space' : 'RLE made it worse!']].forEach(([b, s]) => {
+    const n = el('div', 'stat'); n.append(el('b', null, b), el('span', null, s)); box.append(n);
+  });
+}
+$('#rl-check').addEventListener('click', () => {
+  const fb = $('#rl-fb');
+  if (rl.mode === 'squash'){
+    let right = 0, long = 0;
+    rl.inputs.forEach((inp, r) => {
+      const ok = rleDecode(inp.value) === rl.img.rows[r];
+      inp.classList.toggle('ok', ok); inp.classList.toggle('bad', !ok);
+      if (ok){ right++; if ((inp.value.match(/[WB]/g) || []).length > runsOf(rl.img.rows[r]).length) long++; }
+    });
+    if (right === 8){
+      feedback(fb, 'ok', `All 8 rows squashed correctly.` + (long ? ` ${long} row${long > 1 ? 's' : ''} could be shorter: join runs of the same colour that sit next to each other.` : ''));
+      if (!rl.solved){ rl.solved = true; award(true); }
+      rlStats();
+    } else {
+      feedback(fb, 'bad', `${right} of 8 rows are right. Check that each red row adds up to 8 pixels.`);
+      award(false);
+    }
+  } else {
+    const target = toVals(rl.img.rows), wrong = [];
+    target.forEach((v, i) => { if (rl.grid.vals[i] !== v) wrong.push(i); });
+    rl.grid.mark(wrong);
+    if (!wrong.length){
+      feedback(fb, 'ok', `Unsquashed! It’s a ${rl.img.name}, exactly as it was before. That’s lossless compression.`);
+      if (!rl.solved){ rl.solved = true; award(true); }
+      rlStats();
+    } else {
+      feedback(fb, 'bad', `${wrong.length} pixel${wrong.length > 1 ? 's don’t' : ' doesn’t'} match yet. Look for the red outlines.`);
+      award(false);
+    }
+  }
+});
+$('#rl-hint').addEventListener('click', () => {
+  const inp = rl.inputs[0]; inp.value = rleText(rl.img.rows[0]); inp.classList.add('ok'); rl.inputs[1].focus();
+});
+$('#rl-next').addEventListener('click', rlNew);
+$$('#rl-mode button').forEach(b => b.addEventListener('click', () => {
+  $$('#rl-mode button').forEach(x => x.setAttribute('aria-pressed', x === b)); rl.mode = b.dataset.m; rlNew();
+}));
+rlNew();
+
+/* deep links: #numbers, #pixels or #sound */
+const startMode = location.hash.slice(1);
+showMode(modeGames[startMode] ? startMode : 'numbers');
 </script>
 </body>
 </html>
